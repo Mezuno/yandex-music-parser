@@ -24,7 +24,6 @@ class YandexMusicParser
     {
     }
 
-
     /**
      * Main parse function that invoke all other functions.
      *
@@ -39,7 +38,6 @@ class YandexMusicParser
     public function parse() : mixed
     {
         $html = $this->getPageHtmlCurl();
-
         $dom = $this->getDom($html);
 
         $this->setArtistNodes($dom);
@@ -49,15 +47,12 @@ class YandexMusicParser
         }
 
         $this->setArtist();
-
         $artist = $this->storeArtist();
 
         $this->setTraksAndAlbums($dom, $artist->id);
-
         $this->storeAlbums();
 
         $tracks = $this->prepareTracksDataToStore($artist->id);
-
         $this->storeTracks($tracks);
 
         return $artist->title;
