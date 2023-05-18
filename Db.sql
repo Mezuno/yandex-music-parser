@@ -2,7 +2,7 @@ CREATE SCHEMA `yandex-parser`;
 
 CREATE TABLE `yandex-parser`.`tracks` (
     `id` INT NOT NULL AUTO_INCREMENT,
-    `title` VARCHAR(150) NOT NULL DEFAULT 'Title',
+    `title` VARCHAR(255) NOT NULL DEFAULT 'Title',
     `album_id` INT NULL,
     `artist_id` INT NOT NULL,
     `duration` TIME NULL,
@@ -12,7 +12,7 @@ CREATE TABLE `yandex-parser`.`tracks` (
 
 CREATE TABLE `yandex-parser`.`artists` (
     `id` INT NOT NULL AUTO_INCREMENT,
-    `title` VARCHAR(100) NOT NULL DEFAULT 'Artist name',
+    `title` VARCHAR(255) NOT NULL DEFAULT 'Artist name',
     `month_listeners` INT NULL DEFAULT 0,
     `followers` INT NULL DEFAULT 0,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -21,7 +21,7 @@ CREATE TABLE `yandex-parser`.`artists` (
 
 CREATE TABLE `yandex-parser`.`albums` (
     `id` INT NOT NULL AUTO_INCREMENT,
-    `title` VARCHAR(150) NOT NULL,
+    `title` VARCHAR(255) NOT NULL,
     `artist_id` INT NOT NULL,
     `created_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     `updated_at` TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

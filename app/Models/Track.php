@@ -11,12 +11,12 @@ class Track extends Model
     protected $table = 'tracks';
     protected $guarded = [];
 
-    public function artist()
+    public function artist(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Artist::class, 'artist_id', 'id');
     }
 
-    public function album()
+    public function album(): \Illuminate\Database\Eloquent\Relations\HasOne
     {
         return $this->hasOne(Album::class, 'album_id', 'id');
     }

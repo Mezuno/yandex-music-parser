@@ -2,230 +2,162 @@
 
 namespace App\Parsers;
 
-use App\Models\Album;
-use App\Models\Artist;
-use App\Models\Track;
 use PHPHtmlParser\Dom;
 use PHPHtmlParser\Exceptions\ChildNotFoundException;
 use PHPHtmlParser\Exceptions\CircularException;
 use PHPHtmlParser\Exceptions\NotLoadedException;
 use PHPHtmlParser\Exceptions\StrictException;
 
-class YandexMusicParser
+final class YandexMusicParser
 {
-    private array $artist;
-    private array $artistNodes;
-    private array $tracks;
-    private array $albums;
+    private static array $artist;
+    private static array $tracks;
+    private static array $albums;
 
-    public function __construct(
-        public string $link
-    )
-    {
-    }
+    const SEARCH_NODES = [
+        'ARTIST_TITLE' => '.page-artist__title',
+        'ARTIST_MONTH_LISTENERS' => '.deco-typo-secondary > span',
+        'ARTIST_FOLLOWERS' => 'span.d-like_theme-count > button > span > span > span.d-button__label',
+        'TRACK_CARD' => 'div.d-track',
+        'TRACK_ALBUM' => 'div.d-track__overflowable-column > div.d-track__overflowable-wrapper > div.d-track__meta > a',
+        'TRACK_TITLE' => 'div.d-track__quasistatic-column > div.d-track__name',
+        'TRACK_DURATION' => 'div.d-track__overflowable-column > div.d-track__end-column > div.d-track__info > span',
+    ];
 
     /**
      * Main parse function that invoke all other functions.
      *
-     * Returns false if artist doesn`t exists, and artist name if success parse.
+     * Returns artist name if success parse and null if artist not found.
      *
-     * @return mixed
+     * @param string $link
+     * @return ?array
      * @throws ChildNotFoundException
      * @throws CircularException
-     * @throws NotLoadedException
      * @throws StrictException
+     * @throws NotLoadedException
      */
-    public function parse() : mixed
+    public static function parseArtistPage(string $link) : ?array
     {
-        $html = $this->getPageHtmlCurl();
-        $dom = $this->getDom($html);
+        $response = self::getArtistPageCurl($link);
 
-        $this->setArtistNodes($dom);
-
-        if (!$this->checkArtistExists()) {
-            return false;
+        if ($response['info']['http_code'] === 404) {
+            return null;
         }
 
-        $this->setArtist();
-        $artist = $this->storeArtist();
+        $dom = self::getDom($response['html']);
 
-        $this->setTraksAndAlbums($dom, $artist->id);
-        $this->storeAlbums();
+        self::getArtistFromDom($dom);
+        self::getTracksAndAlbumsFromDom($dom);
 
-        $tracks = $this->prepareTracksDataToStore($artist->id);
-        $this->storeTracks($tracks);
-
-        return $artist->title;
+        return self::compactArtistData();
     }
 
     /**
-     * Get page html with curl.
+     * Get an artist page from a link using curl.
      *
-     * @return bool|string
+     * @param string $link
+     * @return array
      */
-    private function getPageHtmlCurl(): bool|string
+    private static function getArtistPageCurl(string $link) : array
     {
-        $curlHandle = curl_init($this->link);
+        $curlHandle = curl_init($link);
         curl_setopt($curlHandle, CURLOPT_RETURNTRANSFER , 1);
-        $response = curl_exec($curlHandle);
+        $html = curl_exec($curlHandle);
+        $info = curl_getinfo($curlHandle);
         curl_close($curlHandle);
-        return $response;
+        return ['html' => $html, 'info' => $info];
     }
 
     /**
-     * @param $html
+     * Get a PHPHtmlParser\Dom object from passed html.
+     *
+     * @param string $html
      * @return Dom
      * @throws ChildNotFoundException
      * @throws CircularException
      * @throws StrictException
      */
-    private function getDom($html): Dom
+    private static function getDom(string $html) : Dom
     {
         $dom = new Dom;
         return $dom->loadStr($html);
     }
 
     /**
-     * Method find artist data in $dom.
+     * Method sets artist data to self::$artist field from $artistNodes.
      *
      * @param Dom $dom
      * @return Void
      * @throws ChildNotFoundException
      * @throws NotLoadedException
      */
-    private function setArtistNodes(Dom $dom) : Void
+    private static function getArtistFromDom(Dom $dom) : Void
     {
-        $this->artistNodes['title'] = $dom->find('.page-artist__title', 0);
-        $this->artistNodes['monthListeners'] = $dom->find('.deco-typo-secondary > span', 0);
-        $this->artistNodes['followers'] = $dom->find('span.d-like_theme-count > button > span > span > span.d-button__label', 0);
+        self::$artist['title'] = $dom->find(self::SEARCH_NODES['ARTIST_TITLE'], 0)->text;
+
+        self::$artist['month_listeners'] = (int)str_replace(
+            ' ', '',
+            $dom->find(self::SEARCH_NODES['ARTIST_MONTH_LISTENERS'], 0)->text ?? ''
+        ) ?? 0;
+
+        self::$artist['followers'] = (int)str_replace(
+            ' ', '',
+            $dom->find(self::SEARCH_NODES['ARTIST_FOLLOWERS'], 0)->text ?? ''
+        ) ?? 0;
     }
 
     /**
-     * Check if artists exists.
+     * Method find tracks`s data in $dom and sets it to self::$tracks and self::$albums.
      *
-     * @return bool
-     */
-    private function checkArtistExists()
-    {
-        return $this->artistNodes['title'] !== null;
-    }
-
-    /**
-     * Method sets artist data to $this->artist field from $artistNodes.
-     *
-     * @return bool
-     */
-    private function setArtist() : Bool
-    {
-        if (empty($this->artistNodes['title'])) {
-            return false;
-        }
-
-        $this->artist['title'] = $this->artistNodes['title']->text;
-
-        if (!empty($this->artistNodes['monthListeners'])) {
-            $this->artist['monthListeners'] = $this->artistNodes['monthListeners']->text;
-        }
-
-        if (!empty($this->artistNodes['followers'])) {
-            $this->artist['followers'] = $this->artistNodes['followers']->text;
-        }
-
-        $this->artist['monthListeners'] = str_replace(' ', '', $this->artist['monthListeners'] ?? 0);
-        $this->artist['followers'] = str_replace(' ', '', $this->artist['followers'] ?? 0);
-
-        return true;
-    }
-
-    /**
-     * Method stores current artist data to database.
-     *
-     * @return Artist
-     */
-    private function storeArtist(): Artist
-    {
-        return Artist::firstOrCreate(
-            ['title' => $this->artist['title']],
-            [
-                'title' => $this->artist['title'],
-                'month_listeners' => (int)$this->artist['monthListeners'],
-                'followers' => (int)$this->artist['followers']
-            ]
-        );
-    }
-
-    /**
-     * Method find tracks`s data in $dom and sets it to $this->tracks and $this->albums.
-     *
-     * @param $dom
+     * @param Dom $dom
      * @return Void
+     * @throws ChildNotFoundException
+     * @throws NotLoadedException
      */
-    private function setTraksAndAlbums(Dom $dom, Int $artistId) : Void
+    private static function getTracksAndAlbumsFromDom(Dom $dom) : Void
     {
-        $count = $dom->find('div.d-track')->count();
+        $count = $dom->find(self::SEARCH_NODES['TRACK_CARD'])->count();
 
         for ($i = 0; $i < $count; $i++) {
 
-            foreach ($dom->find('div.d-track')[$i]->find('div.d-track__overflowable-column > div.d-track__overflowable-wrapper > div.d-track__meta > a') as $trackAlbum) {
-                $this->albums[$i]['title'] = $trackAlbum->title;
-                $this->albums[$i]['artist_id'] = $artistId;
+            foreach (
+                $dom->find(self::SEARCH_NODES['TRACK_CARD'])[$i]
+                    ->find(self::SEARCH_NODES['TRACK_ALBUM'])
+                     as $trackAlbum) {
+                self::$albums[$i]['title'] = $trackAlbum->title;
             }
 
-            foreach ($dom->find('div.d-track')[$i]->find('div.d-track__quasistatic-column > div.d-track__name') as $track) {
-                $this->tracks[$i]['title'] = $track->title;
-                $this->tracks[$i]['artist_id'] = $artistId;
+            foreach (
+                $dom->find(self::SEARCH_NODES['TRACK_CARD'])[$i]
+                    ->find(self::SEARCH_NODES['TRACK_TITLE'])
+                    as $track) {
+                self::$tracks[$i]['title'] = $track->title;
+                self::$tracks[$i]['album'] = self::$albums[$i]['title'];
             }
 
-            foreach ($dom->find('div.d-track')[$i]->find('div.d-track__overflowable-column > div.d-track__end-column > div.d-track__info > span') as $trackDuration) {
-                $this->tracks[$i]['duration'] = str_replace(' ', '', $trackDuration->text);
+            foreach (
+                $dom->find(self::SEARCH_NODES['TRACK_CARD'])[$i]
+                    ->find(self::SEARCH_NODES['TRACK_DURATION'])
+                     as $trackDuration) {
+                self::$tracks[$i]['duration'] = str_replace(' ', '', $trackDuration->text);
             }
 
         }
+
+        self::$albums = array_unique(self::$albums, SORT_REGULAR);
     }
 
     /**
-     * Stores albums data to database.
-     *
-     * @return Void
-     */
-    private function storeAlbums() : Void
-    {
-        foreach ($this->albums as $key => $album) {
-            $this->albums[$key]['id'] = Album::firstOrCreate($album, $album)->id;
-        }
-    }
-
-    /**
-     * Prepare tracks data to store.
+     * Compact artist data contains in class for return.
      *
      * @return array
      */
-    private function prepareTracksDataToStore(Int $artistId): array
+    private static function compactArtistData(): array
     {
-        $tracks = [];
-
-        for ($i = 0; $i < count($this->tracks); $i++) {
-            $tracks[] = [
-                'title' => $this->tracks[$i]['title'],
-                'artist_id' => $artistId,
-                'album_id' => $this->albums[$i]['id'],
-                'duration' => $this->tracks[$i]['duration'] ?? '0:00',
-            ];
-        }
-
-        return $tracks;
-    }
-
-    /**
-     * Stores tracks data to database.
-     *
-     * @param array $tracks
-     * @return void
-     */
-    private function storeTracks(array $tracks)
-    {
-        foreach ($tracks as $track) {
-            Track::firstOrCreate($track, $track);
-        }
+        return [
+            'artist' => self::$artist,
+            'albums' => self::$albums,
+            'tracks' => self::$tracks,
+        ];
     }
 }

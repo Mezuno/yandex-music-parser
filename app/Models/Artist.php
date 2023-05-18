@@ -11,4 +11,14 @@ class Artist extends Model
 
     protected $table = 'artists';
     protected $guarded = [];
+
+    public function album(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Album::class);
+    }
+
+    public function track(): \Illuminate\Database\Eloquent\Relations\HasMany
+    {
+        return $this->hasMany(Track::class);
+    }
 }
